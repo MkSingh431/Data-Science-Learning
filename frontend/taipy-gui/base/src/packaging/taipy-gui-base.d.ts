@@ -42,9 +42,7 @@ export type RequestDataEntry = {
     receivedData: unknown;
 };
 declare class DataManager {
-    _data: Record<string, unknown>;
-    _init_data: ModuleData;
-    _requested_data: Record<string, Record<string, RequestDataEntry>>;
+    #private;
     constructor(variableModuleData: ModuleData);
     init(variableModuleData: ModuleData): ModuleData;
     getEncodedName(varName: string, module: string): string | undefined;
@@ -56,6 +54,7 @@ declare class DataManager {
     getAllData(): Record<string, unknown>;
     update(encodedName: string, value: unknown, dataEventKey?: string): void;
     deleteRequestedData(encodedName: string, dataEventKey: string): void;
+    getRequestedData(): Record<string, Record<string, RequestDataEntry>>;
 }
 export type WsMessageType =
     | "A"
@@ -77,7 +76,7 @@ export type WsMessageType =
     | "GR"
     | "FV"
     | "BC"
-    | "LS"
+    | "LS";
 export interface WsMessage {
     type: WsMessageType | string;
     name: string;
@@ -91,13 +90,47 @@ export declare abstract class WsAdapter {
     abstract supportedMessageTypes: string[];
     abstract handleWsMessage(message: WsMessage, app: TaipyApp): boolean;
 }
-declare class CookieHandler {
-    resourceHandlerId: string;
-    constructor();
-    init(socket: Socket, taipyApp: TaipyApp): Promise<void>;
-    verifyCookieStatus(): Promise<boolean>;
-    addBeforeUnloadListener(): void;
-    deleteCookie(): Promise<void>;
+export interface CanvasRenderConfig {
+    rootId: string;
+    root: HTMLElement;
+    wrapper: [string, string];
+}
+export interface Element {
+    type: string;
+    id: string;
+    properties?: Record<string, unknown>;
+    renderConfig?: CanvasRenderConfig;
+    editModeRenderConfig?: CanvasRenderConfig;
+}
+declare enum ElementActionEnum {
+    Add = "add",
+    Modify = "modify",
+    Delete = "delete",
+}
+export interface ElementAction {
+    action: ElementActionEnum;
+    id: Element["id"];
+    payload?: Record<string, unknown>;
+    editMode?: boolean;
+}
+declare class ElementManager {
+    #private;
+    taipyApp: TaipyApp;
+    constructor(taipyApp: TaipyApp);
+    init(canvasDomElement: HTMLElement, canvasEditModeCanvas?: HTMLElement, propertyEditorElement?: HTMLElement): void;
+    setEditMode(editMode: boolean): void;
+    addElement(
+        type: string,
+        id: string,
+        rootId: string,
+        wrapper: CanvasRenderConfig["wrapper"],
+        properties?: Element["properties"] | undefined,
+    ): void;
+    modifyElement(id: string, elementProperties: Record<string, unknown>): void;
+    modifyElementProperties(id: string, payload: Record<string, unknown>): void;
+    deleteElement(id: string): void;
+    openPropertyEditor(id: string): void;
+    closePropertyEditor(): void;
 }
 export type OnInitHandler = (taipyApp: TaipyApp) => void;
 export type OnChangeHandler = (taipyApp: TaipyApp, encodedName: string, value: unknown, dataEventKey?: string) => void;
@@ -105,6 +138,7 @@ export type OnNotifyHandler = (taipyApp: TaipyApp, type: string, message: string
 export type OnReloadHandler = (taipyApp: TaipyApp, removedChanges: ModuleData) => void;
 export type OnWsMessage = (taipyApp: TaipyApp, event: string, payload: unknown) => void;
 export type OnWsStatusUpdate = (taipyApp: TaipyApp, messageQueue: string[]) => void;
+export type OnCanvasReRender = (taipyApp: TaipyApp, isEditMode: boolean, elementAction?: ElementAction) => void;
 export type Route = [string, string];
 export type RequestDataCallback = (
     taipyApp: TaipyApp,
@@ -113,16 +147,10 @@ export type RequestDataCallback = (
     value: unknown,
 ) => void;
 export declare class TaipyApp {
+    #private;
     socket: Socket;
-    _onInit: OnInitHandler | undefined;
-    _onChange: OnChangeHandler | undefined;
-    _onNotify: OnNotifyHandler | undefined;
-    _onReload: OnReloadHandler | undefined;
-    _onWsMessage: OnWsMessage | undefined;
-    _onWsStatusUpdate: OnWsStatusUpdate | undefined;
-    _ackList: string[];
-    _rdc: Record<string, Record<string, RequestDataCallback>>;
-    _cookieHandler: CookieHandler | undefined;
+    ackList: string[];
+    rdc: Record<string, Record<string, RequestDataCallback>>;
     variableData: DataManager | undefined;
     functionData: DataManager | undefined;
     guiAddr: string;
@@ -132,6 +160,7 @@ export declare class TaipyApp {
     path: string | undefined;
     routes: Route[] | undefined;
     wsAdapters: WsAdapter[];
+    elementManager: ElementManager;
     constructor(
         onInit?: OnInitHandler | undefined,
         onChange?: OnChangeHandler | undefined,
@@ -157,6 +186,9 @@ export declare class TaipyApp {
     get onWsStatusUpdate(): OnWsStatusUpdate | undefined;
     set onWsStatusUpdate(handler: OnWsStatusUpdate | undefined);
     onWsStatusUpdateEvent(messageQueue: string[]): void;
+    get onCanvasReRender(): OnCanvasReRender | undefined;
+    set onCanvasReRender(handler: OnCanvasReRender | undefined);
+    onCanvasReRenderEvent(canvasIsEditMode: boolean, elementAction?: ElementAction): void;
     init(): void;
     initApp(): void;
     sendWsMessage(type: WsMessageType | string, id: string, payload: unknown, context?: string | undefined): void;
@@ -179,6 +211,25 @@ export declare class TaipyApp {
     getPageMetadata(): Record<string, unknown>;
     getWsStatus(): string[];
     getBaseUrl(): string;
+    createCanvas(
+        canvasDomElement: HTMLElement,
+        canvasEditModeCanvas?: HTMLElement,
+        propertyEditorElement?: HTMLElement,
+    ): void;
+    addElement2Canvas(
+        type: string,
+        id: string,
+        rootId: string,
+        wrapper: CanvasRenderConfig["wrapper"],
+        properties?: Element["properties"] | undefined,
+    ): void;
+    setCanvasEditMode(bool: boolean): void;
+    modifyElement(id: string, modifiedRecord: Record<string, unknown>): void;
+    modifyElementProperties(id: string, properties: Record<string, unknown>): void;
+    deleteElement(id: string): void;
+    openPropertyEditor(id: string): void;
+    closePropertyEditor(): void;
+    refreshThemes(): void;
 }
 export declare const createApp: (
     onInit?: OnInitHandler,
@@ -189,3 +240,5 @@ export declare const createApp: (
 ) => TaipyApp;
 
 export { TaipyApp as default };
+
+export {};

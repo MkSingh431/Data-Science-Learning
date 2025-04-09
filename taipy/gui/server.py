@@ -177,7 +177,15 @@ class _Server:
                     )
                     return response
                 try:
-                    return resource_handler.get_resources(path, static_folder, base_url)
+                    config = {
+                        "base_url": base_url,
+                        "taipy_resource_path": static_folder,
+                        "config": client_config,
+                        "css_vars": css_vars,
+                        "scripts": scripts,
+                        "styles": styles,
+                    }
+                    return resource_handler.get_resources(path, config)
                 except Exception as e:
                     raise RuntimeError("Can't get resources from custom resource handler") from e
             if path == "" or path == "index.html" or "." not in path:
@@ -239,12 +247,17 @@ class _Server:
 
         return taipy_bp
 
-    # Update to render as JSX
-    def _render(self, html_fragment, script_paths, style, head, context):
+    @staticmethod
+    def _render_jsx_fragment(html_fragment):
         template_str = _Server.__RE_OPENING_CURLY.sub(_Server.__OPENING_CURLY, html_fragment)
         template_str = _Server.__RE_CLOSING_CURLY.sub(_Server.__CLOSING_CURLY, template_str)
         template_str = template_str.replace('"{!', "{")
         template_str = template_str.replace('!}"', "}")
+        return template_str
+
+    # Update to render as JSX
+    def _render(self, html_fragment, script_paths, style, head, context):
+        template_str = _Server._render_jsx_fragment(html_fragment)
         style = get_style(style)
         return self._direct_render_json(
             {

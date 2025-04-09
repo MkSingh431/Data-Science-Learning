@@ -10,6 +10,7 @@ import { TaipyWsAdapter, WsAdapter } from "./wsAdapter";
 import { WsMessageType } from "../../src/context/wsUtils";
 import { getBase } from "./utils";
 import { CookieHandler } from "./cookieHandler";
+import { CanvasRenderConfig, Element, ElementAction, ElementManager } from "./element/elementManager";
 
 export type OnInitHandler = (taipyApp: TaipyApp) => void;
 export type OnChangeHandler = (taipyApp: TaipyApp, encodedName: string, value: unknown, dataEventKey?: string) => void;
@@ -17,6 +18,7 @@ export type OnNotifyHandler = (taipyApp: TaipyApp, type: string, message: string
 export type OnReloadHandler = (taipyApp: TaipyApp, removedChanges: ModuleData) => void;
 export type OnWsMessage = (taipyApp: TaipyApp, event: string, payload: unknown) => void;
 export type OnWsStatusUpdate = (taipyApp: TaipyApp, messageQueue: string[]) => void;
+export type OnCanvasReRender = (taipyApp: TaipyApp, isEditMode: boolean, elementAction?: ElementAction) => void;
 export type OnEvent =
     | OnInitHandler
     | OnChangeHandler
@@ -29,15 +31,15 @@ type RequestDataCallback = (taipyApp: TaipyApp, encodedName: string, dataEventKe
 
 export class TaipyApp {
     socket: Socket;
-    _onInit: OnInitHandler | undefined;
-    _onChange: OnChangeHandler | undefined;
-    _onNotify: OnNotifyHandler | undefined;
-    _onReload: OnReloadHandler | undefined;
-    _onWsMessage: OnWsMessage | undefined;
-    _onWsStatusUpdate: OnWsStatusUpdate | undefined;
-    _ackList: string[];
-    _rdc: Record<string, Record<string, RequestDataCallback>>;
-    _cookieHandler: CookieHandler | undefined;
+    #onInit: OnInitHandler | undefined;
+    #onChange: OnChangeHandler | undefined;
+    #onNotify: OnNotifyHandler | undefined;
+    #onReload: OnReloadHandler | undefined;
+    #onWsMessage: OnWsMessage | undefined;
+    #onWsStatusUpdate: OnWsStatusUpdate | undefined;
+    #onCanvasReRender: OnCanvasReRender | undefined;
+    ackList: string[];
+    rdc: Record<string, Record<string, RequestDataCallback>>;
     variableData: DataManager | undefined;
     functionData: DataManager | undefined;
     guiAddr: string;
@@ -47,6 +49,7 @@ export class TaipyApp {
     path: string | undefined;
     routes: Route[] | undefined;
     wsAdapters: WsAdapter[];
+    elementManager: ElementManager;
 
     constructor(
         onInit: OnInitHandler | undefined = undefined,
@@ -68,24 +71,24 @@ export class TaipyApp {
         this.path = path;
         this.socket = socket;
         this.wsAdapters = [new TaipyWsAdapter()];
-        this._ackList = [];
-        this._rdc = {};
-        this._cookieHandler = handleCookie ? new CookieHandler() : undefined;
+        this.elementManager = new ElementManager(this);
+        this.ackList = [];
+        this.rdc = {};
         // Init socket io connection only when cookie is not handled
         // Socket will be initialized by cookie handler when it is used
-        this._cookieHandler ? this._cookieHandler?.init(socket, this) : initSocket(socket, this);
+        handleCookie ? new CookieHandler().init(socket, this) : initSocket(socket, this);
     }
 
     // Getter and setter
     get onInit() {
-        return this._onInit;
+        return this.#onInit;
     }
 
     set onInit(handler: OnInitHandler | undefined) {
         if (handler !== undefined && handler.length !== 1) {
             throw new Error("onInit() requires one parameter");
         }
-        this._onInit = handler;
+        this.#onInit = handler;
     }
 
     onInitEvent() {
@@ -93,14 +96,14 @@ export class TaipyApp {
     }
 
     get onChange() {
-        return this._onChange;
+        return this.#onChange;
     }
 
     set onChange(handler: OnChangeHandler | undefined) {
         if (handler !== undefined && handler.length !== 3 && handler.length !== 4) {
             throw new Error("onChange() requires three or four parameters");
         }
-        this._onChange = handler;
+        this.#onChange = handler;
     }
 
     onChangeEvent(encodedName: string, value: unknown, dataEventKey?: string) {
@@ -108,14 +111,14 @@ export class TaipyApp {
     }
 
     get onNotify() {
-        return this._onNotify;
+        return this.#onNotify;
     }
 
     set onNotify(handler: OnNotifyHandler | undefined) {
         if (handler !== undefined && handler.length !== 3) {
             throw new Error("onNotify() requires three parameters");
         }
-        this._onNotify = handler;
+        this.#onNotify = handler;
     }
 
     onNotifyEvent(type: string, message: string) {
@@ -123,13 +126,13 @@ export class TaipyApp {
     }
 
     get onReload() {
-        return this._onReload;
+        return this.#onReload;
     }
     set onReload(handler: OnReloadHandler | undefined) {
         if (handler !== undefined && handler?.length !== 2) {
             throw new Error("onReload() requires two parameters");
         }
-        this._onReload = handler;
+        this.#onReload = handler;
     }
 
     onReloadEvent(removedChanges: ModuleData) {
@@ -137,13 +140,13 @@ export class TaipyApp {
     }
 
     get onWsMessage() {
-        return this._onWsMessage;
+        return this.#onWsMessage;
     }
     set onWsMessage(handler: OnWsMessage | undefined) {
         if (handler !== undefined && handler?.length !== 3) {
             throw new Error("onWsMessage() requires three parameters");
         }
-        this._onWsMessage = handler;
+        this.#onWsMessage = handler;
     }
 
     onWsMessageEvent(event: string, payload: unknown) {
@@ -151,17 +154,32 @@ export class TaipyApp {
     }
 
     get onWsStatusUpdate() {
-        return this._onWsStatusUpdate;
+        return this.#onWsStatusUpdate;
     }
     set onWsStatusUpdate(handler: OnWsStatusUpdate | undefined) {
         if (handler !== undefined && handler?.length !== 2) {
             throw new Error("onWsStatusUpdate() requires two parameters");
         }
-        this._onWsStatusUpdate = handler;
+        this.#onWsStatusUpdate = handler;
     }
 
     onWsStatusUpdateEvent(messageQueue: string[]) {
         this.onWsStatusUpdate && this.onWsStatusUpdate(this, messageQueue);
+    }
+
+    get onCanvasReRender() {
+        return this.#onCanvasReRender;
+    }
+
+    set onCanvasReRender(handler: OnCanvasReRender | undefined) {
+        if (handler !== undefined && handler?.length !== 3) {
+            throw new Error("onCanvasReRender() requires three parameter");
+        }
+        this.#onCanvasReRender = handler;
+    }
+
+    onCanvasReRenderEvent(canvasIsEditMode: boolean, elementAction?: ElementAction) {
+        this.onCanvasReRender && this.onCanvasReRender(this, canvasIsEditMode, elementAction);
     }
 
     // Utility methods
@@ -190,8 +208,8 @@ export class TaipyApp {
         }
         const ackId = sendWsMessage(this.socket, type, id, payload, this.clientId, context);
         if (ackId) {
-            this._ackList.push(ackId);
-            this.onWsStatusUpdateEvent(this._ackList);
+            this.ackList.push(ackId);
+            this.onWsStatusUpdateEvent(this.ackList);
         }
     }
 
@@ -259,7 +277,7 @@ export class TaipyApp {
         // preserve options for this data key so it can be called during refresh
         this.variableData?.addRequestDataOptions(encodedName, dataKey, options);
         // preserve callback so it can be called later
-        this._rdc[encodedName] = { ...this._rdc[encodedName], [dataKey]: cb };
+        this.rdc[encodedName] = { ...this.rdc[encodedName], [dataKey]: cb };
         // call the ws to request data
         this.sendWsMessage("DU", encodedName, options);
     }
@@ -289,11 +307,62 @@ export class TaipyApp {
     }
 
     getWsStatus() {
-        return this._ackList;
+        return this.ackList;
     }
 
     getBaseUrl() {
         return getBase();
+    }
+
+    // ElementManager API
+    createCanvas(
+        canvasDomElement: HTMLElement,
+        canvasEditModeCanvas?: HTMLElement,
+        propertyEditorElement?: HTMLElement,
+    ) {
+        this.elementManager.init(canvasDomElement, canvasEditModeCanvas, propertyEditorElement);
+    }
+
+    addElement2Canvas(
+        type: string,
+        id: string,
+        rootId: string,
+        wrapper: CanvasRenderConfig["wrapper"],
+        properties: Element["properties"] | undefined = undefined,
+    ) {
+        this.elementManager.addElement(type, id, rootId, wrapper, properties);
+    }
+
+    setCanvasEditMode(bool: boolean) {
+        this.elementManager.setEditMode(bool);
+    }
+
+    modifyElement(id: string, modifiedRecord: Record<string, unknown>) {
+        if ("id" in modifiedRecord) {
+            console.error(`Error modifying element '${id}'. Cannot modify id of an existing element.`);
+            return;
+        }
+        this.elementManager.modifyElement(id, modifiedRecord);
+    }
+
+    modifyElementProperties(id: string, properties: Record<string, unknown>) {
+        this.elementManager.modifyElementProperties(id, properties);
+    }
+
+    deleteElement(id: string) {
+        this.elementManager.deleteElement(id);
+    }
+
+    openPropertyEditor(id: string) {
+        this.elementManager.openPropertyEditor(id);
+    }
+
+    closePropertyEditor() {
+        this.elementManager.closePropertyEditor();
+    }
+
+    refreshThemes() {
+        window.dispatchEvent(new Event("refreshThemes"));
     }
 }
 
