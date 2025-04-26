@@ -95,6 +95,8 @@ export interface NotificationMessage {
     duration: number;
     notificationId?: string;
     snackbarId: string;
+    onClose?: string;
+    reason?: string;
 }
 
 interface TaipyAction extends NamePayload, TaipyBaseAction {
@@ -417,7 +419,8 @@ export const taipyReducer = (state: TaipyState, baseAction: TaipyBaseAction): Ta
                         system: notificationAction.system,
                         duration: notificationAction.duration,
                         notificationId: notificationAction.notificationId,
-                        snackbarId: notificationAction.nType ? nanoid() : notificationAction.nType
+                        snackbarId: notificationAction.nType ? nanoid() : notificationAction.nType,
+                        onClose: notificationAction?.onClose,
                     },
                 ],
             };
@@ -864,7 +867,8 @@ export const createNotificationAction = (notification: NotificationMessage): Tai
     system: notification.system,
     duration: notification.duration,
     notificationId: notification.notificationId,
-    snackbarId: notification.snackbarId
+    snackbarId: notification.snackbarId,
+    onClose: notification?.onClose,
 });
 
 export const createDeleteNotificationAction = (snackbarId: string): TaipyDeleteNotificationAction => {

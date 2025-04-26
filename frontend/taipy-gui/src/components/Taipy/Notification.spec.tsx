@@ -17,8 +17,10 @@ import "@testing-library/jest-dom";
 import { SnackbarProvider } from "notistack";
 
 import TaipyNotification from "./Notification";
-import { NotificationMessage } from "../../context/taipyReducers";
+import { NotificationMessage, TaipyState, INITIAL_STATE } from "../../context/taipyReducers";
 import userEvent from "@testing-library/user-event";
+import { TaipyContext } from "../../context/taipyContext";
+import * as hooks from "../../utils/hooks";
 
 const defaultMessage = "message";
 const defaultNotifications: NotificationMessage[] = [
@@ -38,6 +40,9 @@ describe("Notifications", () => {
     beforeEach(() => {
         jest.clearAllMocks();
     });
+
+    const mockDispatch = jest.fn();
+
     it("renders", async () => {
         const { getByText } = render(
             <SnackbarProvider>
@@ -234,5 +239,53 @@ describe("Notifications", () => {
         const linkElement = document.querySelector("link[rel='shortcut icon']");
         expect(linkElement?.getAttribute("href")).toBe("/test-shortcut-icon.png");
         document.head.removeChild(link);
+    });
+    
+    it("dispatches the correct actions when a notification closes due to timeout", async () => {
+        jest.spyOn(hooks, "useModule").mockReturnValue("testModule");
+        const mockDispatch = jest.fn(); 
+        const state: TaipyState = INITIAL_STATE;
+    
+        const notification = {
+            notificationId: "test-id",
+            snackbarId: "test-snackbar",
+            message: "Test message",
+            nType: "info",
+            duration: 100,
+            onClose: "onCloseCallback",
+            system: false,
+        };
+    
+        const wrapper = render(
+            <SnackbarProvider>
+                <TaipyContext.Provider value={{ state, dispatch: mockDispatch }}>
+                    <TaipyNotification notifications={[notification]} />
+                </TaipyContext.Provider>
+            </SnackbarProvider>
+        );
+    
+        await waitFor(() => {
+            const notificationElement = screen.queryByText("Test message");
+            expect(notificationElement).not.toBeInTheDocument(); 
+        });
+    
+        expect(mockDispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "DELETE_NOTIFICATION",
+                snackbarId: "test-snackbar",
+            })
+        );
+
+        expect(mockDispatch).toHaveBeenCalledWith(
+            expect.objectContaining({
+                type: "SEND_ACTION_ACTION",
+                context: "testModule", 
+                name: "test-id", 
+                payload: {
+                    action: "onCloseCallback", 
+                    args: ["timeout"], 
+                },
+            })
+        );
     });
 });

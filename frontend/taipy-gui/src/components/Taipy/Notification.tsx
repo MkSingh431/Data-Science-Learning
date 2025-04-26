@@ -16,8 +16,8 @@ import { SnackbarKey, useSnackbar, VariantType, CloseReason } from "notistack";
 import IconButton from "@mui/material/IconButton";
 import CloseIcon from "@mui/icons-material/Close";
 
-import { NotificationMessage, createDeleteNotificationAction } from "../../context/taipyReducers";
-import { useDispatch } from "../../utils/hooks";
+import { NotificationMessage, createDeleteNotificationAction, createSendActionNameAction } from "../../context/taipyReducers";
+import { useDispatch, useModule } from "../../utils/hooks";
 
 interface NotificationProps {
     notifications: NotificationMessage[];
@@ -28,6 +28,7 @@ const TaipyNotification = ({ notifications: notificationProps }: NotificationPro
     const { enqueueSnackbar, closeSnackbar } = useSnackbar();
     const snackbarIds = useRef<Record<string, string>>({});
     const dispatch = useDispatch();
+    const module = useModule();
 
     const closeNotifications = useCallback(
         (ids: string[]) => {
@@ -50,9 +51,17 @@ const TaipyNotification = ({ notifications: notificationProps }: NotificationPro
         [closeNotifications]
     );
 
-    const notificationClosed = (event: SyntheticEvent | null, reason: CloseReason, key?: SnackbarKey) => {
-        snackbarIds.current = Object.fromEntries(Object.entries(snackbarIds.current).filter(([id]) => id !== key));
-    };
+    const notificationClosed = useCallback(
+        (event: SyntheticEvent | null, reason: CloseReason, key?: SnackbarKey, callback?: string) => {
+            if (callback) {
+                dispatch(createSendActionNameAction(notification?.notificationId, module, callback, reason === "timeout" ? "timeout" : "forced"));               
+            }
+            snackbarIds.current = Object.fromEntries(
+                Object.entries(snackbarIds.current).filter(([id]) => id !== key)
+            );
+        },
+        [dispatch, module, notification?.notificationId] 
+    );
 
     const faviconUrl = useMemo(() => {
         const nodeList = document.getElementsByTagName("link");
@@ -85,16 +94,17 @@ const TaipyNotification = ({ notifications: notificationProps }: NotificationPro
                 enqueueSnackbar(notification.message, {
                     variant: notification.nType as VariantType,
                     action: notificationAction,
-                    onClose: notificationClosed,
+                    onClose: (event, reason, key) => notificationClosed(event, reason, key, notification.onClose),
                     key: notification.snackbarId,
                     autoHideDuration: notification.duration || null,
                 });
                 notification.system &&
                     new Notification(document.title || "Taipy", { body: notification.message, icon: faviconUrl });
             }
+
             dispatch(createDeleteNotificationAction(notification.snackbarId));
         }
-    }, [notification, enqueueSnackbar, closeNotifications, notificationAction, faviconUrl, dispatch]);
+    }, [notification, enqueueSnackbar, closeNotifications, notificationAction, faviconUrl, dispatch, notificationClosed]);
 
     useEffect(() => {
         notification?.system && window.Notification && Notification.requestPermission();
