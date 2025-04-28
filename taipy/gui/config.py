@@ -17,7 +17,6 @@ from importlib.util import find_spec
 import pytz
 import tzlocal
 from dotenv import dotenv_values
-from werkzeug.serving import is_running_from_reloader
 
 from taipy.common.logger._taipy_logger import _TaipyLogger
 
@@ -41,7 +40,7 @@ ConfigParameter = t.Literal[
     "debug",
     "extended_status",
     "favicon",
-    "flask_log",
+    "server_log",
     "host",
     "light_theme",
     "margin",
@@ -115,7 +114,7 @@ Config = t.TypedDict(
         "debug": bool,
         "extended_status": bool,
         "favicon": t.Optional[str],
-        "flask_log": bool,
+        "server_log": bool,
         "host": str,
         "light_theme": t.Optional[t.Dict[str, t.Any]],
         "margin": t.Optional[str],
@@ -289,6 +288,8 @@ class _Config(object):
         self._handle_argparse()
 
     def __log_outside_reloader(self, logger, msg):
+        from .servers import is_running_from_reloader
+
         if not is_running_from_reloader():
             logger.info(msg)
 

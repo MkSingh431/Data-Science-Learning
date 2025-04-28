@@ -9,18 +9,16 @@
 # an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 # specific language governing permissions and limitations under the License.
 
-import inspect
+import typing as t
 
-from taipy.gui import Gui, Html
+from fastapi.responses import Response
+
+from .utils import get_server_type
 
 
-def test_simple_html(gui: Gui, helpers):
-    # html_string = "<html><head></head><body><h1>test</h1><taipy:field value=\"test\"/></body></html>"
-    html_string = "<html><head></head><body><h1>test</h1></body></html>"
-    gui._set_frame(inspect.currentframe())
-    gui.add_page("test", Html(html_string))
-    gui.run(run_server=False)
-    client = gui._server.test_client()
-    response = client.get("/taipy-jsx/test")
-    jsx = helpers.get_response_data(response)["jsx"]
-    assert jsx == "<h1>test</h1>"
+def HttpResponse(message: str, status_code: int = 200, headers: t.Optional[t.Dict[str, t.Any]] = None):
+    if headers is None:
+        headers = {}
+    if get_server_type() == "fastapi":
+        return Response(content=message, status_code=status_code, headers=headers)
+    return (message, status_code, headers)
