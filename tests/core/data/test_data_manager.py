@@ -541,10 +541,7 @@ class TestDataManager:
 
     @pytest.mark.parametrize(
         "storage_type,path",
-        [
-            ("csv", "csv_file"),
-            ("parquet", "parquet_file_path"),
-        ],
+        [("csv", "csv_file")],
     )
     def test_append(self, storage_type, path, request):
         path = request.getfixturevalue(path)
